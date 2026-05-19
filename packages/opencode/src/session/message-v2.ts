@@ -1,7 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { SessionID, MessageID, PartID } from "./schema"
 import { NamedError } from "@opencode-ai/core/util/error"
-import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
+import { APICallError, convertToModelMessages, LoadAPIKeyError, TypeValidationError, type ModelMessage, type UIMessage } from "ai"
 import { LSP } from "@/lsp/lsp"
 import { Snapshot } from "@/snapshot"
 import { SyncEvent } from "../sync"
@@ -17,6 +17,7 @@ import { MessageTable, PartTable, SessionTable } from "./session.sql"
 import * as ProviderError from "@/provider/error"
 import { iife } from "@/util/iife"
 import { errorMessage } from "@/util/error"
+import { isRecord } from "@/util/record"
 import { isMedia } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
@@ -1169,6 +1170,42 @@ export function fromError(
         },
         { cause: e },
       ).toObject()
+    case TypeValidationError.isInstance(e): {
+      const tvValue = e.value
+      if (isRecord(tvValue) && isRecord(tvValue.error)) {
+        const body = tvValue.error as Record<string, unknown>
+        const errorType = String(body.type ?? "")
+        const errorCode = String(body.code ?? "")
+        const errorMsg = String(body.message ?? "")
+        const responseBody = JSON.stringify(tvValue)
+
+        // Context overflow from error response body
+        if (errorCode === "context_length_exceeded" || errorType.includes("context_length")) {
+          return new ContextOverflowError(
+            { message: errorMsg || "Input exceeds context window of this model", responseBody },
+            { cause: e },
+          ).toObject()
+        }
+
+        // Rate limits and server errors should be retried
+        const isRetryable =
+          errorCode === "server_is_overloaded" ||
+          errorCode === "server_error" ||
+          errorType === "rate_limit_error" ||
+          errorType === "server_error" ||
+          errorMsg.toLowerCase().includes("retry")
+
+        return new APIError(
+          {
+            message: errorMsg || `API error: ${errorType}`,
+            isRetryable,
+            responseBody,
+          },
+          { cause: e },
+        ).toObject()
+      }
+      return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
+    }
     case e instanceof Error:
       return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
     default:
