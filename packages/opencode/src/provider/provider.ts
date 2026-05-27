@@ -1371,7 +1371,13 @@ export const layer = Layer.effect(
                 input: model.limit?.input ?? existingModel?.limit?.input,
                 output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
               },
-              headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
+              headers: iife(() => {
+                const h = mergeDeep(existingModel?.headers ?? {}, model.headers ?? {})
+                if (parsed.options["userAgent"] && !h["User-Agent"]) {
+                  h["User-Agent"] = parsed.options["userAgent"] as string
+                }
+                return h
+              }),
               family: model.family ?? existingModel?.family ?? "",
               release_date: model.release_date ?? existingModel?.release_date ?? "",
               variants: {},

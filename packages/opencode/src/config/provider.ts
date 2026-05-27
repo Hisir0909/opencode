@@ -109,6 +109,9 @@ export const Info = Schema.Struct({
           description:
             "Timeout in milliseconds between streamed SSE chunks for this provider. If no chunk arrives within this window, the request is aborted.",
         }),
+        userAgent: Schema.optional(Schema.String).annotate({
+          description: "Custom User-Agent header for HTTP requests to this provider.",
+        }),
       }),
       [Schema.Record(Schema.String, Schema.Any)],
     ),
