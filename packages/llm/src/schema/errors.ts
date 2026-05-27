@@ -123,7 +123,7 @@ export class TransportReason extends Schema.Class<TransportReason>("LLM.Error.Tr
   http: Schema.optional(HttpContext),
 }) {
   get retryable() {
-    return this.kind === "Timeout"
+    return false
   }
 }
 
