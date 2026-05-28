@@ -352,6 +352,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* SessionError.mapBusy(revertSvc.unrevert({ sessionID: ctx.params.sessionID }))
     })
 
+    const retry = Effect.fn("SessionHttpApi.retry")(function* (ctx: { params: { sessionID: SessionID } }) {
+      yield* requireSession(ctx.params.sessionID)
+      yield* SessionError.mapBusy(promptSvc.retry({ sessionID: ctx.params.sessionID }))
+      return yield* requireSession(ctx.params.sessionID)
+    })
+
     const permissionRespond = Effect.fn("SessionHttpApi.permissionRespond")(function* (ctx: {
       params: { sessionID: SessionID; permissionID: PermissionID }
       payload: typeof PermissionResponsePayload.Type
@@ -431,5 +437,6 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("deleteMessage", deleteMessage)
       .handle("deletePart", deletePart)
       .handle("updatePart", updatePart)
+      .handle("retry", retry)
   }),
 )

@@ -94,6 +94,7 @@ export interface Interface {
   readonly shell: (input: ShellInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<MessageV2.WithParts, Image.Error>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
+  readonly retry: (input: LoopInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
@@ -1627,12 +1628,29 @@ export const layer = Layer.effect(
       return result
     })
 
+    const retry = Effect.fn("SessionPrompt.retry")(function* (input: LoopInput) {
+      yield* elog.info("retry", { sessionID: input.sessionID })
+      yield* state.assertNotBusy(input.sessionID)
+
+      const lastMsg = yield* lastAssistant(input.sessionID)
+      if (lastMsg.info.role !== "assistant" || !lastMsg.info.error) {
+        throw new NamedError.Unknown({
+          message: "Last assistant message was not an error. Nothing to retry.",
+        })
+      }
+
+      yield* sessions.removeMessage({ sessionID: input.sessionID, messageID: lastMsg.info.id })
+
+      return yield* loop(input)
+    })
+
     return Service.of({
       cancel,
       prompt,
       loop,
       shell,
       command,
+      retry,
       resolvePromptParts,
     })
   }),

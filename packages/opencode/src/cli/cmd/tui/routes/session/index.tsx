@@ -588,6 +588,29 @@ export function Session() {
       },
     },
     {
+      title: "Retry last error",
+      value: "session.retry",
+      category: "Session",
+      enabled: lastAssistant()?.error != null,
+      slash: {
+        name: "retry",
+      },
+      run: async () => {
+        const status = sync.data.session_status?.[route.sessionID]
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+        try {
+          await sdk.client.session.retry({ sessionID: route.sessionID })
+          toast.show({ message: "Retrying...", variant: "success" })
+        } catch (error) {
+          toast.show({
+            message: error instanceof Error ? error.message : "Failed to retry",
+            variant: "error",
+          })
+        }
+        dialog.clear()
+      },
+    },
+    {
       title: "Undo previous message",
       value: "session.undo",
       category: "Session",
