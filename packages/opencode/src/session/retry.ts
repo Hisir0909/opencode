@@ -135,6 +135,11 @@ export function retryable(error: Err, provider: string) {
     }
   }
 
+  // Retry on unexpected model finish (e.g. SSE stream ended with unknown reason)
+  if (isRecord(error.data) && error.data.ref === "unknown_finish") {
+    return { message: typeof error.data.message === "string" ? error.data.message : "Model finished unexpectedly" }
+  }
+
   const json = parseJSON(msg)
   if (!json || typeof json !== "object") return undefined
   const code = typeof json.code === "string" ? json.code : ""

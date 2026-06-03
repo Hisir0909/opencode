@@ -20,6 +20,7 @@ import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
+import { NamedError } from "@opencode-ai/core/util/error"
 import { Log } from "@opencode-ai/core/util/log"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -576,6 +577,12 @@ export const layer = Layer.effect(
               }
             }
             ctx.assistantMessage.finish = value.reason
+            if (value.reason === "unknown" && !ctx.assistantMessage.error) {
+              throw new NamedError.Unknown({
+                message: "Model finished unexpectedly (unknown reason)",
+                ref: "unknown_finish",
+              })
+            }
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
             yield* session.updatePart({
