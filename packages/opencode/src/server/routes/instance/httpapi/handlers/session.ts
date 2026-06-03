@@ -30,6 +30,7 @@ import {
   MessagesQuery,
   PermissionResponsePayload,
   PromptPayload,
+  RetryQuery,
   RevertPayload,
   ShellPayload,
   SummarizePayload,
@@ -359,9 +360,14 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       return yield* SessionError.mapBusy(revertSvc.unrevert({ sessionID: ctx.params.sessionID }))
     })
 
-    const retry = Effect.fn("SessionHttpApi.retry")(function* (ctx: { params: { sessionID: SessionID } }) {
+    const retry = Effect.fn("SessionHttpApi.retry")(function* (ctx: {
+      params: { sessionID: SessionID }
+      query: typeof RetryQuery.Type
+    }) {
       yield* requireSession(ctx.params.sessionID)
-      yield* SessionError.mapBusy(promptSvc.retry({ sessionID: ctx.params.sessionID }))
+      yield* SessionError.mapBusy(
+        promptSvc.retry({ sessionID: ctx.params.sessionID, messageID: ctx.query.messageID }),
+      )
       return yield* requireSession(ctx.params.sessionID)
     })
 

@@ -44,6 +44,10 @@ export const MessagesQuery = Schema.Struct({
   limit: Schema.optional(Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
   before: Schema.optional(Schema.String),
 })
+export const RetryQuery = Schema.Struct({
+  ...WorkspaceRoutingQueryFields,
+  messageID: Schema.optional(MessageID),
+})
 export const StatusMap = Schema.Record(Schema.String, SessionStatus.Info)
 export const UpdatePayload = Schema.Struct({
   title: Schema.optional(Schema.String),
@@ -444,15 +448,15 @@ export const SessionApi = HttpApi.make("session")
         ),
         HttpApiEndpoint.post("retry", SessionPaths.retry, {
           params: { sessionID: SessionID },
-          query: WorkspaceRoutingQuery,
+          query: RetryQuery,
           success: described(Session.Info, "Retrying session"),
           error: [HttpApiError.BadRequest, ApiNotFoundError, SessionBusyError],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "session.retry",
-            summary: "Retry last error",
+            summary: "Retry from message",
             description:
-              "Remove the last errored assistant message and retry the previous user message with the LLM.",
+              "Remove messages from the specified point and retry. If no messageID is given, removes the last errored assistant message.",
           }),
         ),
       )

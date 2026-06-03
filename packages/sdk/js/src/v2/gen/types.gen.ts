@@ -7751,6 +7751,7 @@ export type SessionRetryData = {
   query?: {
     directory?: string
     workspace?: string
+    messageID?: string
   }
   url: "/session/{sessionID}/retry"
 }

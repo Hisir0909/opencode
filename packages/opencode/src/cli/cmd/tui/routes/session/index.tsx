@@ -61,6 +61,7 @@ import type { PromptInfo } from "../../component/prompt/history"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
+import { DialogRetry } from "./dialog-retry"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
 import { SubagentFooter } from "./subagent-footer.tsx"
@@ -595,26 +596,14 @@ export function Session() {
       },
     },
     {
-      title: "Retry last error",
+      title: "Retry from",
       value: "session.retry",
       category: "Session",
-      enabled: lastAssistant()?.error != null,
       slash: {
         name: "retry",
       },
       run: async () => {
-        const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
-        try {
-          await sdk.client.session.retry({ sessionID: route.sessionID })
-          toast.show({ message: "Retrying...", variant: "success" })
-        } catch (error) {
-          toast.show({
-            message: error instanceof Error ? error.message : "Failed to retry",
-            variant: "error",
-          })
-        }
-        dialog.clear()
+        dialog.replace(() => <DialogRetry sessionID={route.sessionID} />)
       },
     },
     {

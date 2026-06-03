@@ -94,7 +94,7 @@ export interface Interface {
   readonly shell: (input: ShellInput) => Effect.Effect<SessionLegacy.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionLegacy.WithParts, Image.Error>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
-  readonly retry: (input: LoopInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
+  readonly retry: (input: RetryInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
@@ -1633,9 +1633,23 @@ export const layer = Layer.effect(
       return result
     })
 
-    const retry = Effect.fn("SessionPrompt.retry")(function* (input: LoopInput) {
-      yield* elog.info("retry", { sessionID: input.sessionID })
+    const retry = Effect.fn("SessionPrompt.retry")(function* (input: RetryInput) {
+      yield* elog.info("retry", { sessionID: input.sessionID, messageID: input.messageID })
       yield* state.assertNotBusy(input.sessionID)
+
+      if (input.messageID) {
+        const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+        const index = all.findIndex((m) => m.info.id === input.messageID)
+        if (index === -1) {
+          throw new NamedError.Unknown({
+            message: `Message not found: ${input.messageID}`,
+          })
+        }
+        for (let i = index; i < all.length; i++) {
+          yield* sessions.removeMessage({ sessionID: input.sessionID, messageID: all[i].info.id })
+        }
+        return yield* loop({ sessionID: input.sessionID })
+      }
 
       const lastMsg = yield* lastAssistant(input.sessionID)
       if (lastMsg.info.role !== "assistant" || !lastMsg.info.error) {
@@ -1646,7 +1660,7 @@ export const layer = Layer.effect(
 
       yield* sessions.removeMessage({ sessionID: input.sessionID, messageID: lastMsg.info.id })
 
-      return yield* loop(input)
+      return yield* loop({ sessionID: input.sessionID })
     })
 
     return Service.of({
@@ -1727,6 +1741,11 @@ export type PromptInput = Schema.Schema.Type<typeof PromptInput>
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,
+}) {}
+
+export class RetryInput extends Schema.Class<RetryInput>("SessionPrompt.RetryInput")({
+  sessionID: SessionID,
+  messageID: Schema.optional(MessageID),
 }) {}
 
 export const ShellInput = Schema.Struct({

@@ -4010,15 +4010,16 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
-   * Retry last error
+   * Retry from message
    *
-   * Remove the last errored assistant message and retry the previous user message with the LLM.
+   * Remove messages from the specified point and retry. If no messageID is given, removes the last errored assistant message.
    */
   public retry<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
       workspace?: string
+      messageID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4030,6 +4031,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "workspace" },
+            { in: "query", key: "messageID" },
           ],
         },
       ],
