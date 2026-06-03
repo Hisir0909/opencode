@@ -95,7 +95,7 @@ export interface Interface {
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
-  readonly retry: (input: RetryInput) => Effect.Effect<MessageV2.WithParts, Session.BusyError>
+  readonly retry: (input: RetryInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionPrompt") {}
