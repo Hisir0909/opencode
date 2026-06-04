@@ -745,7 +745,15 @@ export function fromError(
           { cause: e },
         ).toObject()
       }
-      return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()
+      // Chunk that looks like data but failed schema validation (e.g. malformed SSE) — retry
+      return new APIError(
+        {
+          message: errorMessage(e),
+          isRetryable: true,
+          responseBody: JSON.stringify(tvValue),
+        },
+        { cause: e },
+      ).toObject()
     }
     case e instanceof Error:
       return new NamedError.Unknown({ message: errorMessage(e) }, { cause: e }).toObject()

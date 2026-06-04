@@ -122,7 +122,7 @@ export function retryable(error: Err, provider: string) {
     return { message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message }
   }
 
-  // Check for rate limit patterns in plain text error messages
+  // Check for rate limit and stream validation patterns in plain text error messages
   const msg = isRecord(error.data) ? error.data.message : undefined
   if (typeof msg === "string") {
     const lower = msg.toLowerCase()
@@ -131,6 +131,10 @@ export function retryable(error: Err, provider: string) {
       lower.includes("rate limit") ||
       lower.includes("too many requests")
     ) {
+      return { message: msg }
+    }
+    // Invalid stream events from the LLM native runtime (e.g. SSE chunk decode failure)
+    if (lower.includes("invalid") && lower.includes("stream")) {
       return { message: msg }
     }
   }
