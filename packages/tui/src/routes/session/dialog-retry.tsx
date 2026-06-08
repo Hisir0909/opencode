@@ -1,9 +1,9 @@
 import { createMemo, onMount } from "solid-js"
-import { useSync } from "@tui/context/sync"
-import { DialogSelect, type DialogSelectOption } from "@tui/ui/dialog-select"
+import { useSync } from "../../context/sync"
+import { DialogSelect, type DialogSelectOption } from "../../ui/dialog-select"
 import type { TextPart } from "@opencode-ai/sdk/v2"
-import { Locale } from "@/util/locale"
-import { useSDK } from "@tui/context/sdk"
+import { Locale } from "../../util/locale"
+import { useSDK } from "../../context/sdk"
 import { useDialog, type DialogContext } from "../../ui/dialog"
 
 export function DialogRetry(props: { sessionID: string }) {
