@@ -1339,13 +1339,13 @@ export function Session() {
                         toBottom()
                       }}
                       sessionID={route.sessionID}
-                      localCommands={[{ name: "retry", description: "rewind an assistant turn and continue" }]}
-                      onLocalCommand={async (input) => {
-                        if (input.command !== "retry") return false
-                        const messageID = await DialogRetryMessage.show(dialog, route.sessionID)
-                        if (!messageID) return false
-                        await sdk.client.session.retry({ sessionID: route.sessionID, messageID })
-                        return true
+                      localCommandHandlers={{
+                        retry: async () => {
+                          const messageID = await DialogRetryMessage.show(dialog, route.sessionID)
+                          if (!messageID) return false
+                          await sdk.client.session.retry({ sessionID: route.sessionID, messageID })
+                          return true
+                        },
                       }}
                       right={<pluginRuntime.Slot name="session_prompt_right" session_id={route.sessionID} />}
                     />

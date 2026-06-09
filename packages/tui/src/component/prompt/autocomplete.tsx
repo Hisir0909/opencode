@@ -81,7 +81,6 @@ export function Autocomplete(props: {
   fileStyleId: number
   agentStyleId: number
   promptPartTypeId: () => number
-  localCommands?: Array<{ name: string; description?: string }>
 }) {
   const editor = useEditorContext()
   const sdk = useSDK()
@@ -476,20 +475,6 @@ export function Autocomplete(props: {
         description: serverCommand.description,
         onSelect: () => {
           const newText = "/" + serverCommand.name + " "
-          const cursor = props.input().logicalCursor
-          props.input().deleteRange(0, 0, cursor.row, cursor.col)
-          props.input().insertText(newText)
-          props.input().cursorOffset = Bun.stringWidth(newText)
-        },
-      })
-    }
-
-    for (const localCommand of props.localCommands ?? []) {
-      results.push({
-        display: "/" + localCommand.name,
-        description: localCommand.description,
-        onSelect: () => {
-          const newText = "/" + localCommand.name + " "
           const cursor = props.input().logicalCursor
           props.input().deleteRange(0, 0, cursor.row, cursor.col)
           props.input().insertText(newText)

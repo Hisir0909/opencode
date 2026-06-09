@@ -70,8 +70,10 @@ export type PromptProps = {
     normal?: string[]
     shell?: string[]
   }
-  localCommands?: Array<{ name: string; description?: string }>
-  onLocalCommand?: (input: { command: string; arguments: string; sessionID: string }) => Promise<boolean | void> | boolean | void
+  localCommandHandlers?: Record<
+    string,
+    (input: { arguments: string; sessionID: string }) => Promise<boolean | void> | boolean | void
+  >
 }
 
 function pastedFilepath(value: string, platform: string) {
@@ -1072,8 +1074,9 @@ export function Prompt(props: PromptProps) {
       const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
-      if (props.localCommands?.some((item) => item.name === command.slice(1))) {
-        const handled = await props.onLocalCommand?.({ command: command.slice(1), arguments: args, sessionID })
+      const localCommandHandler = props.localCommandHandlers?.[command.slice(1)]
+      if (localCommandHandler) {
+        const handled = await localCommandHandler({ arguments: args, sessionID })
         if (handled === false) return false
       } else {
         void sdk.client.session.command({
@@ -1135,7 +1138,7 @@ export function Prompt(props: PromptProps) {
   }
 
   function commandExists(name: string) {
-    return sync.data.command.some((command) => command.name === name) || props.localCommands?.some((command) => command.name === name)
+    return sync.data.command.some((command) => command.name === name) || !!props.localCommandHandlers?.[name]
   }
 
   function pasteText(text: string, virtualText: string) {
@@ -1670,7 +1673,6 @@ export function Prompt(props: PromptProps) {
       </box>
       <Autocomplete
         sessionID={props.sessionID}
-        localCommands={props.localCommands}
         ref={(r) => {
           setAuto(() => r)
         }}
