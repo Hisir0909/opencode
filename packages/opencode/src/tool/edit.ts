@@ -11,6 +11,7 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { FileSystem } from "@opencode-ai/core/filesystem"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
+import { Config } from "@/config/config"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Format } from "../format"
 import { InstanceState } from "@/effect/instance-state"
@@ -62,6 +63,7 @@ export const EditTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const config = yield* Config.Service
 
     return {
       description: DESCRIPTION,
@@ -194,15 +196,15 @@ export const EditTool = Tool.define(
           })
 
           let output = "Edit applied successfully."
-          yield* lsp.touchFile(filePath, "document")
-          const diagnostics = yield* lsp.diagnostics()
-          const normalizedFilePath = FSUtil.normalizePath(filePath)
-          const block = LSP.Diagnostic.report(filePath, diagnostics[normalizedFilePath] ?? [])
-          if (block) output += `\n\nLSP errors detected in this file, please fix:\n${block}`
+          const diagnosticResult =
+            (yield* config.get()).lsp_tool_diagnostics === false
+              ? { diagnostics: {}, output: "" }
+              : yield* collectDiagnostics(filePath, lsp)
+          output += diagnosticResult.output
 
           return {
             metadata: {
-              diagnostics,
+              diagnostics: diagnosticResult.diagnostics,
               diff,
               filediff,
             },
@@ -213,6 +215,16 @@ export const EditTool = Tool.define(
     }
   }),
 )
+
+const collectDiagnostics = Effect.fn("EditTool.collectDiagnostics")(function* (filePath: string, lsp: LSP.Interface) {
+  yield* lsp.touchFile(filePath, "document")
+  const diagnostics = yield* lsp.diagnostics()
+  const block = LSP.Diagnostic.report(filePath, diagnostics[FSUtil.normalizePath(filePath)] ?? [])
+  return {
+    diagnostics,
+    output: block ? `\n\nLSP errors detected in this file, please fix:\n${block}` : "",
+  }
+})
 
 export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
 

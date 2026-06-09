@@ -4,6 +4,7 @@ import * as fs from "fs/promises"
 import { Cause, Effect, Exit, Layer } from "effect"
 import { ApplyPatchTool } from "../../src/tool/apply_patch"
 import { LSP } from "@/lsp/lsp"
+import { Config } from "@/config/config"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
@@ -16,6 +17,24 @@ import { testEffect } from "../lib/effect"
 const it = testEffect(
   Layer.mergeAll(
     LSP.defaultLayer,
+    Config.defaultLayer,
+    FSUtil.defaultLayer,
+    Format.defaultLayer,
+    EventV2Bridge.defaultLayer,
+    Truncate.defaultLayer,
+    Agent.defaultLayer,
+  ),
+)
+
+const lspDiagnosticsLayer = Layer.mock(LSP.Service)({
+  touchFile: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+  diagnostics: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+})
+
+const diagnosticIt = testEffect(
+  Layer.mergeAll(
+    lspDiagnosticsLayer,
+    Config.defaultLayer,
     FSUtil.defaultLayer,
     Format.defaultLayer,
     EventV2Bridge.defaultLayer,
@@ -90,6 +109,22 @@ const expectFailure = <A, E, R>(effect: Effect.Effect<A, E, R>, message?: string
 const expectReadFailure = (filepath: string) => expectFailure(readText(filepath))
 
 describe("tool.apply_patch freeform", () => {
+  diagnosticIt.instance(
+    "omits automatic LSP diagnostics when disabled",
+    () =>
+      Effect.gen(function* () {
+        const { ctx } = makeCtx()
+        const result = yield* execute(
+          { patchText: "*** Begin Patch\n*** Add File: diagnostic.ts\n+content\n*** End Patch" },
+          ctx,
+        )
+
+        expect(result.output).not.toContain("LSP errors detected")
+        expect(result.metadata.diagnostics).toEqual({})
+      }),
+    { config: { lsp_tool_diagnostics: false } },
+  )
+
   it.live("requires patchText", () =>
     Effect.gen(function* () {
       const { ctx } = makeCtx()

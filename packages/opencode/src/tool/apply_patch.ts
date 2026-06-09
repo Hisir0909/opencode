@@ -6,6 +6,7 @@ import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 import { InstanceState } from "@/effect/instance-state"
 import { Patch } from "../patch"
 import { createTwoFilesPatch, diffLines } from "diff"
+import { Config } from "@/config/config"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "@/lsp/lsp"
@@ -26,6 +27,7 @@ export const ApplyPatchTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const config = yield* Config.Service
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -262,13 +264,8 @@ export const ApplyPatchTool = Tool.define(
         yield* events.publish(Watcher.Event.Updated, update)
       }
 
-      // Notify LSP of file changes and collect diagnostics
-      for (const change of fileChanges) {
-        if (change.type === "delete") continue
-        const target = change.movePath ?? change.filePath
-        yield* lsp.touchFile(target, "document")
-      }
-      const diagnostics = yield* lsp.diagnostics()
+      const diagnostics =
+        (yield* config.get()).lsp_tool_diagnostics === false ? {} : yield* collectDiagnostics(fileChanges, lsp)
 
       // Generate output summary
       const summaryLines = fileChanges.map((change) => {
@@ -311,3 +308,14 @@ export const ApplyPatchTool = Tool.define(
     }
   }),
 )
+
+const collectDiagnostics = Effect.fn("ApplyPatchTool.collectDiagnostics")(function* (
+  fileChanges: Array<{ filePath: string; type: "add" | "update" | "delete" | "move"; movePath?: string }>,
+  lsp: LSP.Interface,
+) {
+  for (const change of fileChanges) {
+    if (change.type === "delete") continue
+    yield* lsp.touchFile(change.movePath ?? change.filePath, "document")
+  }
+  return yield* lsp.diagnostics()
+})

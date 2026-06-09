@@ -8,6 +8,7 @@ import DESCRIPTION from "./write.txt"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { FileSystem } from "@opencode-ai/core/filesystem"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
+import { Config } from "@/config/config"
 import { Format } from "../format"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
@@ -31,6 +32,7 @@ export const WriteTool = Tool.define(
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const format = yield* Format.Service
+    const config = yield* Config.Service
 
     return {
       description: DESCRIPTION,
@@ -72,27 +74,16 @@ export const WriteTool = Tool.define(
           })
 
           let output = "Wrote file successfully."
-          yield* lsp.touchFile(filepath, "document")
-          const diagnostics = yield* lsp.diagnostics()
-          const normalizedFilepath = FSUtil.normalizePath(filepath)
-          let projectDiagnosticsCount = 0
-          for (const [file, issues] of Object.entries(diagnostics)) {
-            const current = file === normalizedFilepath
-            if (!current && projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
-            const block = LSP.Diagnostic.report(current ? filepath : file, issues)
-            if (!block) continue
-            if (current) {
-              output += `\n\nLSP errors detected in this file, please fix:\n${block}`
-              continue
-            }
-            projectDiagnosticsCount++
-            output += `\n\nLSP errors detected in other files:\n${block}`
-          }
+          const diagnosticResult =
+            (yield* config.get()).lsp_tool_diagnostics === false
+              ? { diagnostics: {}, output: "" }
+              : yield* collectDiagnostics(filepath, lsp)
+          output += diagnosticResult.output
 
           return {
             title: path.relative(instance.worktree, filepath),
             metadata: {
-              diagnostics,
+              diagnostics: diagnosticResult.diagnostics,
               filepath,
               exists: exists,
             },
@@ -102,3 +93,27 @@ export const WriteTool = Tool.define(
     }
   }),
 )
+
+const collectDiagnostics = Effect.fn("WriteTool.collectDiagnostics")(function* (filepath: string, lsp: LSP.Interface) {
+  yield* lsp.touchFile(filepath, "document")
+  const diagnostics = yield* lsp.diagnostics()
+  const normalizedFilepath = FSUtil.normalizePath(filepath)
+  let output = ""
+  let projectDiagnosticsCount = 0
+  for (const [file, issues] of Object.entries(diagnostics)) {
+    const current = file === normalizedFilepath
+    if (!current && projectDiagnosticsCount >= MAX_PROJECT_DIAGNOSTICS_FILES) continue
+    const block = LSP.Diagnostic.report(current ? filepath : file, issues)
+    if (!block) continue
+    if (current) {
+      output += `\n\nLSP errors detected in this file, please fix:\n${block}`
+      continue
+    }
+    projectDiagnosticsCount++
+    output += `\n\nLSP errors detected in other files:\n${block}`
+  }
+  return {
+    diagnostics,
+    output,
+  }
+})

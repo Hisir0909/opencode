@@ -5,6 +5,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect"
 import { EditTool } from "../../src/tool/edit"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { LSP } from "@/lsp/lsp"
+import { Config } from "@/config/config"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
@@ -32,6 +33,7 @@ afterEach(async () => {
 
 const layer = Layer.mergeAll(
   LSP.defaultLayer,
+  Config.defaultLayer,
   FSUtil.defaultLayer,
   Format.defaultLayer,
   EventV2Bridge.defaultLayer,
@@ -40,6 +42,23 @@ const layer = Layer.mergeAll(
 )
 
 const it = testEffect(layer)
+
+const lspDiagnosticsLayer = Layer.mock(LSP.Service)({
+  touchFile: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+  diagnostics: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+})
+
+const diagnosticIt = testEffect(
+  Layer.mergeAll(
+    lspDiagnosticsLayer,
+    Config.defaultLayer,
+    FSUtil.defaultLayer,
+    Format.defaultLayer,
+    EventV2Bridge.defaultLayer,
+    Truncate.defaultLayer,
+    Agent.defaultLayer,
+  ),
+)
 
 const init = Effect.fn("EditToolTest.init")(function* () {
   const info = yield* EditTool
@@ -146,6 +165,22 @@ describe("tool.edit", () => {
   })
 
   describe("editing existing files", () => {
+    diagnosticIt.instance(
+      "omits automatic LSP diagnostics when disabled",
+      () =>
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const filepath = path.join(test.directory, "diagnostic.ts")
+          yield* put(filepath, "old")
+
+          const result = yield* run({ filePath: filepath, oldString: "old", newString: "new" })
+
+          expect(result.output).toBe("Edit applied successfully.")
+          expect(result.metadata.diagnostics).toEqual({})
+        }),
+      { config: { lsp_tool_diagnostics: false } },
+    )
+
     it.instance("replaces text in existing file", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
