@@ -4,6 +4,7 @@ import path from "path"
 import fs from "fs/promises"
 import { WriteTool } from "../../src/tool/write"
 import { LSP } from "@/lsp/lsp"
+import { Config } from "@/config/config"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { Format } from "../../src/format"
@@ -33,6 +34,25 @@ afterEach(async () => {
 const it = testEffect(
   Layer.mergeAll(
     LSP.defaultLayer,
+    Config.defaultLayer,
+    FSUtil.defaultLayer,
+    EventV2Bridge.defaultLayer,
+    Format.defaultLayer,
+    CrossSpawnSpawner.defaultLayer,
+    Truncate.defaultLayer,
+    Agent.defaultLayer,
+  ),
+)
+
+const lspDiagnosticsLayer = Layer.mock(LSP.Service)({
+  touchFile: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+  diagnostics: () => Effect.die(new Error("LSP diagnostics should be disabled")),
+})
+
+const diagnosticIt = testEffect(
+  Layer.mergeAll(
+    lspDiagnosticsLayer,
+    Config.defaultLayer,
     FSUtil.defaultLayer,
     EventV2Bridge.defaultLayer,
     Format.defaultLayer,
@@ -57,6 +77,20 @@ const run = Effect.fn("WriteToolTest.run")(function* (
 
 describe("tool.write", () => {
   describe("new file creation", () => {
+    diagnosticIt.instance(
+      "omits automatic LSP diagnostics when disabled",
+      () =>
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const filepath = path.join(test.directory, "diagnostic.ts")
+          const result = yield* run({ filePath: filepath, content: "content" })
+
+          expect(result.output).toBe("Wrote file successfully.")
+          expect(result.metadata.diagnostics).toEqual({})
+        }),
+      { config: { lsp_tool_diagnostics: false } },
+    )
+
     it.instance("writes content to new file", () =>
       Effect.gen(function* () {
         const test = yield* TestInstance

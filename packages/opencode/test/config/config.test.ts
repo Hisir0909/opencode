@@ -413,6 +413,15 @@ it.instance(
   { config: { lsp: true } },
 )
 
+it.instance(
+  "loads lsp tool diagnostics config",
+  Effect.gen(function* () {
+    const config = yield* Config.use.get()
+    expect(config.lsp_tool_diagnostics).toBe(false)
+  }),
+  { config: { lsp_tool_diagnostics: false } },
+)
+
 test("loads project config from Git Bash and MSYS2 paths on Windows", async () => {
   // Git Bash and MSYS2 both use /<drive>/... paths on Windows.
   await check((dir) => {

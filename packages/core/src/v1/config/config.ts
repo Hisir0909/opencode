@@ -115,6 +115,10 @@ export const Info = Schema.Struct({
     description:
       "Enable or configure LSP servers. Omit or set to false to disable, true to enable built-ins, or an object to enable built-ins with overrides.",
   }),
+  lsp_tool_diagnostics: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Return LSP diagnostics in edit, write, and apply_patch tool results after file changes. Defaults to true when LSP is enabled.",
+  }),
   instructions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Additional instruction files or patterns to include",
   }),

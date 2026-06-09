@@ -2030,6 +2030,7 @@ export type Config = {
               }
             }
       }
+  lsp_tool_diagnostics?: boolean
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
