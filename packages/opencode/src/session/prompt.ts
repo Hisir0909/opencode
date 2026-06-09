@@ -87,9 +87,10 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
   readonly prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
+  readonly retry: (input: RetryInput) => Effect.Effect<SessionV1.WithParts, Image.Error | Session.BusyError | Error>
   readonly loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
-  readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
+  readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error | Session.BusyError | Error>
   readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
 }
 
@@ -1204,6 +1205,38 @@ export const layer = Layer.effect(
       return yield* loop({ sessionID: input.sessionID })
     })
 
+    const retry: Interface["retry"] = Effect.fn("SessionPrompt.retry")(function* (input) {
+      yield* state.assertNotBusy(input.sessionID)
+      const match = input.messageID
+        ? yield* MessageV2.get({ sessionID: input.sessionID, messageID: input.messageID }).pipe(
+            Effect.provideService(Database.Service, database),
+            Effect.orDie,
+          )
+        : yield* sessions
+            .findMessage(input.sessionID, (message) => message.info.role === "assistant" && !!message.info.error)
+            .pipe(
+              Effect.flatMap((found) =>
+                Option.match(found, {
+                  onNone: () => Effect.die("No failed assistant message found to retry"),
+                  onSome: Effect.succeed,
+                }),
+              ),
+              Effect.orDie,
+            )
+
+      if (match.info.role !== "assistant") throw new Error("Retry target must be an assistant message")
+      if (!match.info.error && !input.messageID) throw new Error("No failed assistant message found to retry")
+      const parent = yield* MessageV2.get({ sessionID: input.sessionID, messageID: match.info.parentID }).pipe(
+        Effect.provideService(Database.Service, database),
+        Effect.orDie,
+      )
+      if (parent.info.role !== "user") throw new Error("Retry target has no user prompt")
+
+      yield* revert.rewind({ sessionID: input.sessionID, messageID: match.info.id })
+      yield* revert.cleanup(yield* sessions.get(input.sessionID).pipe(Effect.orDie))
+      return yield* loop({ sessionID: input.sessionID })
+    })
+
     const lastAssistant = Effect.fnUntraced(function* (sessionID: SessionID) {
       const match = yield* sessions.findMessage(sessionID, (m) => m.info.role !== "user").pipe(Effect.orDie)
       if (Option.isSome(match)) return match.value
@@ -1607,6 +1640,7 @@ export const layer = Layer.effect(
     return Service.of({
       cancel,
       prompt,
+      retry,
       loop,
       shell,
       command,
@@ -1678,6 +1712,12 @@ export const PromptInput = Schema.Struct({
   ),
 })
 export type PromptInput = Schema.Schema.Type<typeof PromptInput>
+
+export const RetryInput = Schema.Struct({
+  sessionID: SessionID,
+  messageID: Schema.optional(MessageID),
+})
+export type RetryInput = Schema.Schema.Type<typeof RetryInput>
 
 export class LoopInput extends Schema.Class<LoopInput>("SessionPrompt.LoopInput")({
   sessionID: SessionID,

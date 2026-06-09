@@ -204,6 +204,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRetryErrors,
+  SessionRetryResponses,
   SessionRevertErrors,
   SessionRevertResponses,
   SessionShareErrors,
@@ -4203,6 +4205,45 @@ export class Session2 extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<SessionCommandResponses, SessionCommandErrors, ThrowOnError>({
       url: "/session/{sessionID}/command",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Retry from message
+   *
+   * Rewind to a specific assistant message, remove it and later assistant turns for the same user message, and continue the session.
+   */
+  public retry<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      workspace?: string
+      messageID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "messageID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRetryResponses, SessionRetryErrors, ThrowOnError>({
+      url: "/session/{sessionID}/retry",
       ...options,
       ...params,
       headers: {

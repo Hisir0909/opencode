@@ -133,6 +133,17 @@ export function retryable(error: Err, provider: string) {
     ) {
       return { message: msg }
     }
+    if (
+      error.name === "TypeValidationError" ||
+      lower.includes("typevalidationerror") ||
+      lower.includes("invalid sse stream") ||
+      lower.includes("invalid server-sent event") ||
+      lower.includes("unknown_finish") ||
+      lower.includes("stream_read_error") ||
+      lower.includes("upstream_error")
+    ) {
+      return { message: msg }
+    }
   }
 
   const json = parseJSON(msg)

@@ -70,6 +70,8 @@ export type PromptProps = {
     normal?: string[]
     shell?: string[]
   }
+  localCommands?: Array<{ name: string; description?: string }>
+  onLocalCommand?: (input: { command: string; arguments: string; sessionID: string }) => Promise<boolean | void> | boolean | void
 }
 
 function pastedFilepath(value: string, platform: string) {
@@ -1061,10 +1063,7 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
-    } else if (
-      inputText.startsWith("/") &&
-      sync.data.command.some((x) => x.name === inputText.split("\n")[0].split(" ")[0].slice(1))
-    ) {
+    } else if (inputText.startsWith("/") && commandExists(inputText.split("\n")[0].split(" ")[0].slice(1))) {
       move.startSubmit()
       // Parse command from first line, preserve multi-line content in arguments
       const firstLineEnd = inputText.indexOf("\n")
@@ -1073,15 +1072,20 @@ export function Prompt(props: PromptProps) {
       const restOfInput = firstLineEnd === -1 ? "" : inputText.slice(firstLineEnd + 1)
       const args = firstLineArgs.join(" ") + (restOfInput ? "\n" + restOfInput : "")
 
-      void sdk.client.session.command({
-        sessionID,
-        command: command.slice(1),
-        arguments: args,
-        agent: agent.name,
-        model: `${selectedModel.providerID}/${selectedModel.modelID}`,
-        variant,
-        parts: nonTextParts.filter((x) => x.type === "file"),
-      })
+      if (props.localCommands?.some((item) => item.name === command.slice(1))) {
+        const handled = await props.onLocalCommand?.({ command: command.slice(1), arguments: args, sessionID })
+        if (handled === false) return false
+      } else {
+        void sdk.client.session.command({
+          sessionID,
+          command: command.slice(1),
+          arguments: args,
+          agent: agent.name,
+          model: `${selectedModel.providerID}/${selectedModel.modelID}`,
+          variant,
+          parts: nonTextParts.filter((x) => x.type === "file"),
+        })
+      }
     } else {
       move.startSubmit()
       sdk.client.session
@@ -1128,6 +1132,10 @@ export function Prompt(props: PromptProps) {
     input.clear()
     if (finishMoveProgress) move.finishSubmit()
     return true
+  }
+
+  function commandExists(name: string) {
+    return sync.data.command.some((command) => command.name === name) || props.localCommands?.some((command) => command.name === name)
   }
 
   function pasteText(text: string, virtualText: string) {
@@ -1662,6 +1670,7 @@ export function Prompt(props: PromptProps) {
       </box>
       <Autocomplete
         sessionID={props.sessionID}
+        localCommands={props.localCommands}
         ref={(r) => {
           setAuto(() => r)
         }}

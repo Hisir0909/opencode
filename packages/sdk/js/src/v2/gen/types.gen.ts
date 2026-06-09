@@ -8472,6 +8472,49 @@ export type SessionCommandResponses = {
 
 export type SessionCommandResponse = SessionCommandResponses[keyof SessionCommandResponses]
 
+export type SessionRetryData = {
+  body?: {
+    messageID?: string
+  }
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/retry"
+}
+
+export type SessionRetryErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+  /**
+   * SessionBusyError
+   */
+  409: SessionBusyError
+}
+
+export type SessionRetryError = SessionRetryErrors[keyof SessionRetryErrors]
+
+export type SessionRetryResponses = {
+  /**
+   * Created message
+   */
+  200: {
+    info: Message
+    parts: Array<Part>
+  }
+}
+
+export type SessionRetryResponse = SessionRetryResponses[keyof SessionRetryResponses]
+
 export type SessionShellData = {
   body?: {
     messageID?: string

@@ -69,6 +69,7 @@ export const SummarizePayload = Schema.Struct({
 })
 export const PromptPayload = Schema.Struct(Struct.omit(SessionPrompt.PromptInput.fields, ["sessionID"]))
 export const CommandPayload = Schema.Struct(Struct.omit(SessionPrompt.CommandInput.fields, ["sessionID"]))
+export const RetryPayload = Schema.Struct(Struct.omit(SessionPrompt.RetryInput.fields, ["sessionID"]))
 export const ShellPayload = Schema.Struct(Struct.omit(SessionPrompt.ShellInput.fields, ["sessionID"]))
 export const RevertPayload = Schema.Struct(Struct.omit(SessionRevert.RevertInput.fields, ["sessionID"]))
 export const PermissionResponsePayload = Schema.Struct({
@@ -95,6 +96,7 @@ export const SessionPaths = {
   prompt: `${root}/:sessionID/message`,
   promptAsync: `${root}/:sessionID/prompt_async`,
   command: `${root}/:sessionID/command`,
+  retry: `${root}/:sessionID/retry`,
   shell: `${root}/:sessionID/shell`,
   revert: `${root}/:sessionID/revert`,
   unrevert: `${root}/:sessionID/unrevert`,
@@ -351,6 +353,20 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.command",
             summary: "Send command",
             description: "Send a new command to a session for execution by the AI assistant.",
+          }),
+        ),
+        HttpApiEndpoint.post("retry", SessionPaths.retry, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          payload: [HttpApiSchema.NoContent, RetryPayload],
+          success: described(SessionV1.WithParts, "Created message"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError, SessionBusyError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.retry",
+            summary: "Retry from message",
+            description:
+              "Rewind to a specific assistant message, remove it and later assistant turns for the same user message, and continue the session.",
           }),
         ),
         HttpApiEndpoint.post("shell", SessionPaths.shell, {

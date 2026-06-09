@@ -16,8 +16,11 @@ export const RevertInput = Schema.Struct({
 })
 export type RevertInput = Schema.Schema.Type<typeof RevertInput>
 
+const RewindPartID = PartID.ascending("prt_rewind")
+
 export interface Interface {
   readonly revert: (input: RevertInput) => Effect.Effect<Session.Info, Session.BusyError>
+  readonly rewind: (input: Omit<RevertInput, "partID">) => Effect.Effect<Session.Info, Session.BusyError>
   readonly unrevert: (input: { sessionID: SessionID }) => Effect.Effect<Session.Info, Session.BusyError>
   readonly cleanup: (session: Session.Info) => Effect.Effect<void>
 }
@@ -86,6 +89,47 @@ export const layer = Layer.effect(
       return yield* sessions.get(input.sessionID).pipe(Effect.orDie)
     })
 
+    const rewind = Effect.fn("SessionRevert.rewind")(function* (input: Omit<RevertInput, "partID">) {
+      yield* state.assertNotBusy(input.sessionID)
+      const all = yield* sessions.messages({ sessionID: input.sessionID }).pipe(Effect.orDie)
+      const session = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+      const target = all.find((msg) => msg.info.id === input.messageID)
+      if (!target || target.info.role !== "assistant") return session
+      const parentID = target.info.parentID
+      const parent = all.find((msg) => msg.info.id === parentID)
+      if (!parent || parent.info.role !== "user") return session
+
+      const patches = all
+        .filter((msg) => msg.info.id >= input.messageID && isRewindMessage(msg, parentID))
+        .flatMap((msg) =>
+          msg.parts
+            .filter((part): part is SessionV1.PatchPart => part.type === "patch")
+            .map((part) => ({ hash: part.hash, files: part.files })),
+        )
+      const rev: Session.Info["revert"] = {
+        messageID: input.messageID,
+        partID: RewindPartID,
+        snapshot: session.revert?.snapshot ?? (yield* snap.track()),
+      }
+      if (session.revert?.snapshot) yield* snap.restore(session.revert.snapshot)
+      yield* snap.revert(patches)
+      if (rev.snapshot) rev.diff = yield* snap.diff(rev.snapshot)
+      const range = all.filter((msg) => msg.info.id >= rev.messageID && isRewindMessage(msg, parentID))
+      const diffs = yield* summary.computeDiff({ messages: range })
+      yield* storage.write(["session_diff", input.sessionID], diffs).pipe(Effect.ignore)
+      yield* events.publish(Session.Event.Diff, { sessionID: input.sessionID, diff: diffs })
+      yield* sessions.setRevert({
+        sessionID: input.sessionID,
+        revert: rev,
+        summary: {
+          additions: diffs.reduce((sum, x) => sum + x.additions, 0),
+          deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
+          files: diffs.length,
+        },
+      })
+      return yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+    })
+
     const unrevert = Effect.fn("SessionRevert.unrevert")(function* (input: { sessionID: SessionID }) {
       yield* Effect.logInfo("unreverting", { sessionID: input.sessionID })
       yield* state.assertNotBusy(input.sessionID)
@@ -120,6 +164,18 @@ export const layer = Layer.effect(
       }
       if (session.revert.partID && target) {
         const partID = session.revert.partID
+        if (partID === RewindPartID) {
+          if (target.info.role !== "assistant") return
+          const parentID = target.info.parentID
+          for (const msg of msgs) {
+            if (msg.info.id < messageID) continue
+            if (msg.info.role === "assistant" && msg.info.parentID === parentID) {
+              yield* sessions.removeMessage({ sessionID, messageID: msg.info.id })
+            }
+          }
+          yield* sessions.clearRevert(sessionID)
+          return
+        }
         const idx = target.parts.findIndex((part) => part.id === partID)
         if (idx >= 0) {
           const removeParts = target.parts.slice(idx)
@@ -132,7 +188,7 @@ export const layer = Layer.effect(
       yield* sessions.clearRevert(sessionID)
     })
 
-    return Service.of({ revert, unrevert, cleanup })
+    return Service.of({ revert, rewind, unrevert, cleanup })
   }),
 )
 
@@ -146,5 +202,9 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionSummary.defaultLayer),
   ),
 )
+
+function isRewindMessage(msg: SessionV1.WithParts, parentID: MessageID) {
+  return msg.info.role === "assistant" && msg.info.parentID === parentID
+}
 
 export * as SessionRevert from "./revert"

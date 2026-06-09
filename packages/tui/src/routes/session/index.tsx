@@ -78,6 +78,7 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { collapseToolOutput } from "../../util/collapse-tool-output"
 import { usePluginRuntime } from "../../plugin/runtime"
 import { DialogRetryAction } from "../../component/dialog-retry-action"
+import { DialogRetryMessage } from "./dialog-retry-message"
 import { getRevertDiffFiles } from "../../util/revert-diff"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useOpencodeKeymap } from "../../keymap"
 import { PathFormatterProvider, usePathFormatter } from "../../context/path-format"
@@ -549,6 +550,30 @@ export function Session() {
             sessionID={route.sessionID}
           />
         ))
+      },
+    },
+    {
+      title: "Retry from message",
+      value: "session.retry",
+      category: "Session",
+      slash: {
+        name: "retry",
+      },
+      run: async () => {
+        const messageID = await DialogRetryMessage.show(dialog, route.sessionID)
+        if (messageID === null) return
+        await sdk.client.session
+          .retry({
+            sessionID: route.sessionID,
+            messageID,
+          })
+          .catch((error) => {
+            toast.show({
+              message: error instanceof Error ? error.message : "Failed to retry message",
+              variant: "error",
+            })
+          })
+        dialog.clear()
       },
     },
     {
@@ -1314,6 +1339,14 @@ export function Session() {
                         toBottom()
                       }}
                       sessionID={route.sessionID}
+                      localCommands={[{ name: "retry", description: "rewind an assistant turn and continue" }]}
+                      onLocalCommand={async (input) => {
+                        if (input.command !== "retry") return false
+                        const messageID = await DialogRetryMessage.show(dialog, route.sessionID)
+                        if (!messageID) return false
+                        await sdk.client.session.retry({ sessionID: route.sessionID, messageID })
+                        return true
+                      }}
                       right={<pluginRuntime.Slot name="session_prompt_right" session_id={route.sessionID} />}
                     />
                   </pluginRuntime.Slot>

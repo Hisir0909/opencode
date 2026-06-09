@@ -30,12 +30,13 @@ import {
   MessagesQuery,
   PermissionResponsePayload,
   PromptPayload,
+  RetryPayload,
   RevertPayload,
   ShellPayload,
   SummarizePayload,
   UpdatePayload,
 } from "../groups/session"
-import { PermissionNotFoundError } from "../errors"
+import { PermissionNotFoundError, SessionBusyError } from "../errors"
 import * as SessionError from "./session-errors"
 
 const tryParseJson = (text: string) =>
@@ -336,6 +337,24 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
         .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
     })
 
+    const retry = Effect.fn("SessionHttpApi.retry")(function* (ctx: {
+      params: { sessionID: SessionID }
+      payload: typeof RetryPayload.Type | void
+    }) {
+      yield* requireSession(ctx.params.sessionID)
+      return yield* promptSvc.retry({ ...(ctx.payload || {}), sessionID: ctx.params.sessionID }).pipe(
+        Effect.catchTag("SessionBusyError", (error) =>
+          Effect.fail(
+            new SessionBusyError({
+              sessionID: error.sessionID,
+              message: `Session is busy: ${error.sessionID}`,
+            }),
+          ),
+        ),
+        Effect.mapError((error) => (error instanceof SessionBusyError ? error : new HttpApiError.BadRequest({}))),
+      )
+    })
+
     const shell = Effect.fn("SessionHttpApi.shell")(function* (ctx: {
       params: { sessionID: SessionID }
       payload: typeof ShellPayload.Type
@@ -429,6 +448,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       .handle("prompt", prompt)
       .handle("promptAsync", promptAsync)
       .handle("command", command)
+      .handle("retry", retry)
       .handle("shell", shell)
       .handle("revert", revert)
       .handle("unrevert", unrevert)

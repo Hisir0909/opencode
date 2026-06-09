@@ -53,6 +53,17 @@ export type Prepared = {
 const mergeOptions = (target: Record<string, any>, source: Record<string, any> | undefined): Record<string, any> =>
   mergeDeep(target, source ?? {}) as Record<string, any>
 
+function headersWithUserAgent(input: {
+  readonly headers: Record<string, string>
+  readonly userAgent: unknown
+}): Record<string, string> {
+  if (Object.keys(input.headers).some((name) => name.toLowerCase() === "user-agent")) return input.headers
+  if (typeof input.userAgent === "string" && input.userAgent.trim()) {
+    return { ...input.headers, "User-Agent": input.userAgent }
+  }
+  return { ...input.headers, "User-Agent": USER_AGENT }
+}
+
 export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: PrepareInput) {
   const isOpenaiOauth = input.provider.id === "openai" && input.auth?.type === "oauth"
   const system = [
@@ -168,29 +179,29 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
     ? (yield* InstanceState.context).project.id
     : undefined
 
+  const baseHeaders = {
+    ...(input.model.providerID.startsWith("opencode")
+      ? {
+          ...(opencodeProjectID ? { "x-opencode-project": opencodeProjectID } : {}),
+          "x-opencode-session": input.sessionID,
+          "x-opencode-request": input.user.id,
+          "x-opencode-client": input.flags.client,
+        }
+      : {
+          "x-session-affinity": input.sessionID,
+          ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
+        }),
+    ...input.model.headers,
+    ...headers,
+  }
+
   return {
     system,
     messages,
     tools: Object.fromEntries(Object.entries(tools).toSorted(([a], [b]) => a.localeCompare(b))),
     params,
     messageTransformOptions: options,
-    headers: {
-      ...(input.model.providerID.startsWith("opencode")
-        ? {
-            ...(opencodeProjectID ? { "x-opencode-project": opencodeProjectID } : {}),
-            "x-opencode-session": input.sessionID,
-            "x-opencode-request": input.user.id,
-            "x-opencode-client": input.flags.client,
-            "User-Agent": USER_AGENT,
-          }
-        : {
-            "x-session-affinity": input.sessionID,
-            ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
-            "User-Agent": USER_AGENT,
-          }),
-      ...input.model.headers,
-      ...headers,
-    },
+    headers: headersWithUserAgent({ headers: baseHeaders, userAgent: input.provider.options.userAgent }),
   }
 })
 
