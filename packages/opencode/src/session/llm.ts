@@ -29,6 +29,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { ReasoningTokenRetry } from "./llm/reasoning-token-retry"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -249,6 +250,7 @@ const live: Layer.Layer<
           return {
             type: "native" as const,
             stream: native.stream,
+            options: prepared.params.options,
           }
         }
         yield* Effect.logInfo("llm runtime selected", {
@@ -351,8 +353,23 @@ const live: Layer.Layer<
             },
           },
         }),
+        options: prepared.params.options,
       }
     })
+
+    const withReasoningTokenRetry = (
+      stream: Stream.Stream<LLMEvent, unknown>,
+      options: Record<string, unknown>,
+      model: Provider.Model,
+    ) => {
+      if (!ProviderTransform.supportsDegradedReasoningTokenRetry(model)) return stream
+      return stream.pipe(
+        Stream.mapEffect((event) => {
+          const error = ReasoningTokenRetry.fromEvent(event, options)
+          return error ? Effect.fail(error) : Effect.succeed(event)
+        }),
+      )
+    }
 
     const stream: Interface["stream"] = (input) =>
       Stream.scoped(
@@ -365,16 +382,20 @@ const live: Layer.Layer<
 
             const result = yield* run({ ...input, abort: ctrl.signal })
 
-            if (result.type === "native") return result.stream
+            if (result.type === "native") return withReasoningTokenRetry(result.stream, result.options, input.model)
 
             // Adapter seam: both runtimes expose the same LLMEvent stream. Native
             // already returns one; AI SDK streams are converted here.
             const state = LLMAISDK.adapterState()
-            return Stream.fromAsyncIterable(result.result.fullStream, (e) =>
-              e instanceof Error ? e : new Error(String(e)),
-            ).pipe(
-              Stream.mapEffect((event) => LLMAISDK.toLLMEvents(state, event)),
-              Stream.flatMap((events) => Stream.fromIterable(events)),
+            return withReasoningTokenRetry(
+              Stream.fromAsyncIterable(result.result.fullStream, (e) =>
+                e instanceof Error ? e : new Error(String(e)),
+              ).pipe(
+                Stream.mapEffect((event) => LLMAISDK.toLLMEvents(state, event)),
+                Stream.flatMap((events) => Stream.fromIterable(events)),
+              ),
+              result.options,
+              input.model,
             )
           }),
         ),

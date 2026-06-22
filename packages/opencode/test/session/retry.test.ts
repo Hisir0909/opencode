@@ -11,6 +11,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderError } from "../../src/provider/error"
 import { SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
+import { DegradedReasoningTokenError } from "../../src/session/llm/reasoning-token-retry"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 
@@ -161,6 +162,17 @@ describe("session.retry.retryable", () => {
     const msg = "Too many requests, please slow down"
     const error = wrap(msg)
     expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: msg })
+  })
+
+  test("retries degraded reasoning token errors", () => {
+    const msg = "降智错误: reasoning token count 516 matched configured degraded counts [516]"
+    const error = wrap(msg)
+    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: msg })
+  })
+
+  test("retries degraded reasoning token error instances", () => {
+    const error = MessageV2.fromError(new DegradedReasoningTokenError({ tokens: 516, counts: [516] }), { providerID })
+    expect(SessionRetry.retryable(error, retryProvider)?.message).toContain("降智错误")
   })
 
   test("retries transport timeout errors", () => {

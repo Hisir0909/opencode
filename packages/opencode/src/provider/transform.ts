@@ -16,11 +16,18 @@ function mimeToModality(mime: string): Modality | undefined {
 }
 
 export const OUTPUT_TOKEN_MAX = 32_000
+export const DEGRADED_REASONING_TOKEN_RETRY = "degradedReasoningTokenRetry"
+export const DEGRADED_REASONING_TOKEN_COUNTS = "degradedReasoningTokenCounts"
 
 // OpenAI Responses `include` value that returns the encrypted reasoning state
 // needed for stateless multi-turn reasoning (store: false). Hoisted so every
 // branch that requests it stays in lockstep.
 const INCLUDE_ENCRYPTED_REASONING = ["reasoning.encrypted_content"] as const
+const DEGRADED_REASONING_TOKEN_MODELS = new Set(["gpt-5.5", "gpt-5.5-fast"])
+const INTERNAL_PROVIDER_OPTIONS = new Set<string>([
+  DEGRADED_REASONING_TOKEN_RETRY,
+  DEGRADED_REASONING_TOKEN_COUNTS,
+])
 
 export function sanitizeSurrogates(content: string) {
   return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
@@ -59,6 +66,16 @@ function sdkKey(npm: string): string | undefined {
       return "openaiCompatible"
   }
   return undefined
+}
+
+export function providerWireOptions(options: Record<string, any>) {
+  const entries = Object.entries(options).filter((entry) => !INTERNAL_PROVIDER_OPTIONS.has(entry[0]))
+  if (entries.length === Object.keys(options).length) return options
+  return Object.fromEntries(entries)
+}
+
+export function supportsDegradedReasoningTokenRetry(model: Pick<Provider.Model, "providerID" | "api">) {
+  return model.providerID === "openai" && DEGRADED_REASONING_TOKEN_MODELS.has(model.api.id.toLowerCase())
 }
 
 // TODO: fix this stupid inefficient dogshit function
@@ -1136,6 +1153,15 @@ export function options(input: {
 
   const modelId = input.model.api.id.toLowerCase()
 
+  if (supportsDegradedReasoningTokenRetry(input.model)) {
+    if (typeof input.providerOptions?.[DEGRADED_REASONING_TOKEN_RETRY] === "boolean") {
+      result[DEGRADED_REASONING_TOKEN_RETRY] = input.providerOptions[DEGRADED_REASONING_TOKEN_RETRY]
+    }
+    if (Array.isArray(input.providerOptions?.[DEGRADED_REASONING_TOKEN_COUNTS])) {
+      result[DEGRADED_REASONING_TOKEN_COUNTS] = input.providerOptions[DEGRADED_REASONING_TOKEN_COUNTS]
+    }
+  }
+
   // MiniMax's Anthropic interface defaults thinking off, unlike Chat Completions.
   if (modelId.includes("minimax-m3") && input.model.api.npm === "@ai-sdk/anthropic") {
     result["thinking"] = { type: "adaptive" }
@@ -1255,6 +1281,7 @@ const SLUG_OVERRIDES: Record<string, string> = {
 }
 
 export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
+  const wireOptions = providerWireOptions(options)
   if (model.api.npm === "@ai-sdk/gateway") {
     // Gateway providerOptions are split across two namespaces:
     // - `gateway`: gateway-native routing/caching controls (order, only, byok, etc.)
@@ -1264,8 +1291,8 @@ export function providerOptions(model: Provider.Model, options: { [x: string]: a
     const i = model.api.id.indexOf("/")
     const rawSlug = i > 0 ? model.api.id.slice(0, i) : undefined
     const slug = rawSlug ? (SLUG_OVERRIDES[rawSlug] ?? rawSlug) : undefined
-    const gateway = options.gateway
-    const rest = Object.fromEntries(Object.entries(options).filter(([k]) => k !== "gateway"))
+    const gateway = wireOptions.gateway
+    const rest = Object.fromEntries(Object.entries(wireOptions).filter(([k]) => k !== "gateway"))
     const has = Object.keys(rest).length > 0
 
     const result: Record<string, any> = {}
@@ -1299,9 +1326,9 @@ export function providerOptions(model: Provider.Model, options: { [x: string]: a
   // providerOptions["openai"], but OpenAIResponsesLanguageModel checks
   // "azure" first. Pass both so model options work on either code path.
   if (model.api.npm === "@ai-sdk/azure") {
-    return { openai: options, azure: options }
+    return { openai: wireOptions, azure: wireOptions }
   }
-  return { [key]: options }
+  return { [key]: wireOptions }
 }
 
 export function maxOutputTokens(model: Provider.Model, outputTokenMax = OUTPUT_TOKEN_MAX): number {
