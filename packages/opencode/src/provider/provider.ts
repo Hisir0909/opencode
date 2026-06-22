@@ -1622,7 +1622,7 @@ export const layer = Layer.effect(
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
         const provider = s.providers[model.providerID]
-        const options = { ...provider.options }
+        const options = ProviderTransform.providerWireOptions({ ...provider.options })
 
         if (
           model.providerID === "google-vertex" &&

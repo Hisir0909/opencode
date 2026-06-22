@@ -208,6 +208,81 @@ describe("ProviderTransform.options - minimax m3 thinking", () => {
   })
 })
 
+describe("ProviderTransform.options - degraded reasoning token retry", () => {
+  const createModel = (providerID: string, apiID: string) =>
+    ({
+      id: `${providerID}/${apiID}`,
+      providerID,
+      api: {
+        id: apiID,
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+      capabilities: { reasoning: true },
+      limit: { output: 64_000 },
+    }) as any
+
+  for (const apiID of ["gpt-5.5", "gpt-5.5-fast"]) {
+    test(`does not enable retry by default for OpenAI ${apiID}`, () => {
+      const result = ProviderTransform.options({
+        model: createModel("openai", apiID),
+        sessionID: "test-session-123",
+      })
+
+      expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]).toBeUndefined()
+      expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]).toBeUndefined()
+    })
+  }
+
+  test("does not enable retry defaults for nearby non-target models", () => {
+    const result = ProviderTransform.options({
+      model: createModel("openai", "gpt-5.5-pro"),
+      sessionID: "test-session-123",
+    })
+
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]).toBeUndefined()
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]).toBeUndefined()
+  })
+
+  test("does not enable retry defaults for non-OpenAI providers", () => {
+    const result = ProviderTransform.options({
+      model: createModel("opencode", "gpt-5.5"),
+      sessionID: "test-session-123",
+    })
+
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]).toBeUndefined()
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]).toBeUndefined()
+  })
+
+  test("uses provider-level retry options for target models", () => {
+    const result = ProviderTransform.options({
+      model: createModel("openai", "gpt-5.5"),
+      sessionID: "test-session-123",
+      providerOptions: {
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]: true,
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]: [123, 516],
+      },
+    })
+
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]).toBe(true)
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]).toEqual([123, 516])
+  })
+
+  test("ignores provider-level retry options for non-target models", () => {
+    const result = ProviderTransform.options({
+      model: createModel("openai", "gpt-5.5-pro"),
+      sessionID: "test-session-123",
+      providerOptions: {
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]: true,
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]: [516],
+      },
+    })
+
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]).toBeUndefined()
+    expect(result[ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]).toBeUndefined()
+  })
+})
+
 describe("ProviderTransform.options - google thinkingConfig gating", () => {
   const sessionID = "test-session-123"
 
@@ -603,6 +678,20 @@ describe("ProviderTransform.providerOptions", () => {
 
     expect(ProviderTransform.providerOptions(model, { cachePoint: { type: "default" } })).toEqual({
       bedrock: { cachePoint: { type: "default" } },
+    })
+  })
+
+  test("strips internal degraded reasoning retry options", () => {
+    const model = createModel({ providerID: "openai" })
+
+    expect(
+      ProviderTransform.providerOptions(model, {
+        reasoningEffort: "medium",
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_RETRY]: true,
+        [ProviderTransform.DEGRADED_REASONING_TOKEN_COUNTS]: [516],
+      }),
+    ).toEqual({
+      openai: { reasoningEffort: "medium" },
     })
   })
 

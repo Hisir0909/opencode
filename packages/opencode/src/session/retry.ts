@@ -140,7 +140,8 @@ export function retryable(error: Err, provider: string) {
       lower.includes("invalid server-sent event") ||
       lower.includes("unknown_finish") ||
       lower.includes("stream_read_error") ||
-      lower.includes("upstream_error")
+      lower.includes("upstream_error") ||
+      lower.includes("降智错误")
     ) {
       return { message: msg }
     }
