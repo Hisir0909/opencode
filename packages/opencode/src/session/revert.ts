@@ -208,13 +208,10 @@ function isRewindMessage(msg: SessionV1.WithParts, parentID: MessageID) {
   return msg.info.role === "assistant" && msg.info.parentID === parentID
 }
 
-export const node = LayerNode.make(layer, [
-  Session.node,
-  Snapshot.node,
-  Storage.node,
-  EventV2Bridge.node,
-  SessionSummary.node,
-  SessionRunState.node,
-])
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [Session.node, Snapshot.node, Storage.node, EventV2Bridge.node, SessionSummary.node, SessionRunState.node],
+})
 
 export * as SessionRevert from "./revert"
